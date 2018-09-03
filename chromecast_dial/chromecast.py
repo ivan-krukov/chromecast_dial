@@ -1,5 +1,6 @@
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse, urlencode
+from urllib.error import HTTPError
 import xml.etree.ElementTree as ET
 
 from .dial_protocol_defs import DIAL
@@ -32,33 +33,35 @@ class ChromeCast:
         return f'http://{self.addr}:{self.port}/apps/{app}'
 
     def _query_app(self, app, data = None, method = 'GET'):
-        req = Request(self.app_url(app), data = data, method = method)
+        headers = {'Content-Lenght': 0} if data else {}
+
+        req = Request(self.app_url(app),
+                      headers = headers, data = data, method = method)
+        resp_data = ''
         with urlopen(req) as resp:
-            pass
-        return resp
+            resp_data = resp.read()
+        return (resp, resp_data)
 
     def app_status(self, app):
         status = 'Unknown'
-        resp = self._query_app(app)
+        resp, data = self._query_app(app)
 
         if resp.status == 200:
-            resp_str = resp.read()
-            root = ET.fromstring(resp_str)
-            status = _xml_find(root, DIAL.NS_DIAL, 'state')
+            root = ET.fromstring(data)
+            status = _xml_find(root, 'state', ns = DIAL.NS_DIAL).text
 
         return status
 
-    def start_app(self, app):
-        resp = self._get_app(app)
-        return (resp.code, resp.reason)
-
     def stop_app(self, app):
-        resp = self._query_app(app, method = 'DELETE')
+        try:
+            resp, _ = self._query_app(app, method = 'DELETE')
+        except HTTPError:
+            return (404, 'No app running')
         return (resp.code, resp.reason)
 
     def post_youtube_video(self, video_id):
         data = urlencode({'v':video_id}).encode('utf-8')
-        resp = self._query_app('YouTube', data, 'POST')
+        resp, _ = self._query_app('YouTube', data, 'POST')
         return (resp.code, resp.reason)
 
 def get_chromecasts(urls):
