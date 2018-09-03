@@ -39,15 +39,17 @@ class Device:
     def stop_youtube(self):
         req = Request(self.app_url(), method = 'DELETE')
         with urlopen(req) as resp:
-           print(resp.read())
+            pass
+        return (resp.code, resp.reason)
 
     def post_video(self, video_id):
         data = urlencode({'v':video_id}).encode('utf-8')
         req = Request(self.app_url(), data, method = 'POST')
         with urlopen(req) as resp:
-           print(resp.read())
+            pass
+        return (resp.code, resp.reason)
 
-if __name__ == '__main__':
+def discover_urls(scan_timeout = 3, use_first = False, verbose = False):
     sel = selectors.DefaultSelector()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -56,17 +58,14 @@ if __name__ == '__main__':
     sel.register(sock, selectors.EVENT_READ, data=None)
 
     start_t = dt.datetime.now()
-    discovered_urls = []
-    scan_timeout = 3
-    verbose = True
-    first = True
+    discovered = []
     done_scanning = False
 
     while not done_scanning:
         elapsed = dt.datetime.now() - start_t
 
         if elapsed.seconds < scan_timeout:
-            events = sel.select(timeout=1)
+            events = sel.select(timeout = 1)
             if events:
                 for sel_key, mask in events:
                     resp = str(sel_key.fileobj.recv(1024), 'utf-8')
@@ -82,32 +81,36 @@ if __name__ == '__main__':
 
                         for key, value in populated:
                             if key == 'LOCATION':
-                                discovered_urls.append(value)
+                                discovered.append(value)
 
-                        if first and len(discovered_urls) == 1:
+                        if use_first and len(discovered) == 1:
                             done_scanning = True
 
-            # Check for a socket being monitored to continue.
-            # Is this necessary?
-            #if not sel.get_map():
-            #    break
         else:
             done_scanning = True
 
+    return discovered
+
+def create_devices(urls):
+    devices = []
+    for url in urls:
+        headers = {'Content-Length': 0}
+        req = Request(url, headers = headers)
+        with urlopen(req) as resp:
+            if resp.status == 200:
+                resp_str = resp.read()
+                root = ET.fromstring(resp_str)
+                #ipdb.set_trace()
+                devices.append(Device(root))
+    return devices
+
+if __name__ == '__main__':
+    discovered_urls = discover_urls(scan_timeout = 3)
     print(discovered_urls)
     if len(discovered_urls) == 0:
         print('No devices found. Exiting')
         sys.exit(1)
     else:
-        for url in discovered_urls:
-            headers = {'Content-Length': 0}
-            req = Request(url, headers = headers)
-            with urlopen(req) as resp:
-                if resp.status == 200:
-                    resp_str = resp.read()
-                    root = ET.fromstring(resp_str)
-                    #ipdb.set_trace()
-                    d = Device(root)
-                    print(d)
-                    d.post_video('3ZdSDUyxFmc')
-                    print("Done")
+        devs = create_devices(discovered_urls)
+        st = devs[0].post_video('3ZdSDUyxFmc')
+        print(st)
