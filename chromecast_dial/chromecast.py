@@ -44,7 +44,10 @@ class ChromeCast:
 
     def app_status(self, app):
         status = 'Unknown'
-        resp, data = self._query_app(app)
+        try:
+            resp, data = self._query_app(app)
+        except HTTPError:
+            return 'App not found'
 
         if resp.status == 200:
             root = ET.fromstring(data)
